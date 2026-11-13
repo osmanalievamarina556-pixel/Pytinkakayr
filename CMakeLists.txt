@@ -20,9 +20,11 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 # GLES3 вместо desktop GL: бэкенд использует ES-загрузчик
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_ES3)
 
-# Dobby собирается своим CMake; отключаем тесты и примеры
+# Dobby: тесты, примеры и SymbolResolver выключены.
+# SymbolResolver не собирается с текущей версией кода; нам он не нужен, символы ищем через dlsym.
 set(DOBBY_GENERATE_SHARED OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(Plugin.SymbolResolver OFF CACHE BOOL "" FORCE)
 add_subdirectory(${DOBBY_DIR} dobby_build)
 
 add_library(crez SHARED src/crez_esp.cpp)
