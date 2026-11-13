@@ -1,6 +1,5 @@
 // crez_esp.cpp: ImGui ESP поверх eglSwapBuffers, Android arm64, inline hook
-// НЕ ПРОВЕРЕНО НА УСТРОЙСТВЕ. Оффсеты ниже — стандартные UE4 значения-кандидаты,
-// для этой сборки не подтверждены. Включи DEBUG и сверь значения до включения ESP.
+// НЕ ПРОВЕРЕНО НА УСТРОЙСТВЕ. Оффсеты — кандидаты, сверить через DEBUG.
 #include <EGL/egl.h>
 #include <android/log.h>
 #include <dlfcn.h>
@@ -10,7 +9,6 @@
 #include <cstring>
 #include <cstdint>
 #include <cstdlib>
-#include <cstdint>
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include "inline_hook.h"
@@ -19,16 +17,18 @@
 #define LOG(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 
 // --- оффсеты (кандидаты, сверить через DEBUG) ---
-#define OFF_GWORLD        0xF4EDC20   // кандидат из статического скана libUE4.so
-#define OFF_PERSISTENT    0x30        // UWorld::PersistentLevel
-#define OFF_LEVEL_ACTORS  0x98        // ULevel::Actors (TArray<AActor*>)
-#define OFF_ROOTCOMP      0x188       // AActor::RootComponent
-#define OFF_RELLOC        0x11C       // USceneComponent::RelativeLocation (FVector)
-#define OFF_VIEWMATRIX    0x0         // FILL: матрица камеры
+#define OFF_GWORLD          0xF4EDC20   // кандидат из статического скана libUE4.so
+#define OFF_PERSISTENT      0x30        // UWorld::PersistentLevel
+#define OFF_LEVEL_ACTORS    0x98        // ULevel::Actors (TArray<AActor*>)
+#define OFF_ROOTCOMP        0x188       // AActor::RootComponent
+#define OFF_RELLOC          0x11C       // USceneComponent::RelativeLocation (FVector)
+#define OFF_VIEWMATRIX      0x0         // FILL: матрица камеры
+#define OFF_PAWN_PLAYERSTATE 0x0        // FILL: APawn::PlayerState
+#define OFF_PS_ISBOT        0x0         // FILL: APlayerState::bIsABot (bool)
 
 struct Cfg {
     bool esp = true, box = true, dot = true, debug = true;
-    float maxDist = 400.f;
+    bool antiBot = true;
 } cfg;
 
 typedef EGLBoolean (*SwapFn)(EGLDisplay, EGLSurface);
@@ -71,6 +71,19 @@ static bool w2s(const float m[16], const FVector& w, ImVec2& s) {
     return true;
 }
 
+// Бот = актор без PlayerState или с bIsABot. Если оффсеты не заполнены — фильтр не работает.
+static bool antiBotReady() {
+    return OFF_PAWN_PLAYERSTATE != 0 && OFF_PS_ISBOT != 0;
+}
+
+static bool isBot(uintptr_t actor) {
+    uintptr_t ps = 0;
+    if (!rd(actor + OFF_PAWN_PLAYERSTATE, ps) || !ps) return true;   // нет PlayerState: не игрок
+    uint8_t isBotFlag = 0;
+    if (!rd(ps + OFF_PS_ISBOT, isBotFlag)) return false;              // не смогли прочитать: не отфильтровываем
+    return isBotFlag != 0;
+}
+
 static void drawESP() {
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
@@ -85,10 +98,14 @@ static void drawESP() {
     if (actorsNum <= 0 || actorsNum > 8192) return;
     if (!rd(libBase + OFF_VIEWMATRIX, vm)) return;
 
-    int drawn = 0;
+    int drawn = 0, bots = 0;
+    const bool filter = cfg.antiBot && antiBotReady();
+
     for (int32_t i = 0; i < actorsNum; i++) {
         uintptr_t actor = 0;
         if (!rd(actorsData + (uintptr_t)i * 8, actor) || !actor) continue;
+
+        if (filter && isBot(actor)) { bots++; continue; }
 
         uintptr_t root = 0;
         if (!rd(actor + OFF_ROOTCOMP, root) || !root) continue;
@@ -113,6 +130,8 @@ static void drawESP() {
         ImGui::Text("gworld %p", (void*)gworld);
         ImGui::Text("level  %p", (void*)level);
         ImGui::Text("actors %d (on screen %d)", actorsNum, drawn);
+        ImGui::Text("anti-bot: %s (skipped %d)",
+                    !antiBotReady() ? "нет оффсетов" : (cfg.antiBot ? "on" : "off"), bots);
     }
 }
 
@@ -139,6 +158,7 @@ static EGLBoolean hkSwap(EGLDisplay d, EGLSurface s) {
                 ImGui::Checkbox("enable", &cfg.esp);
                 ImGui::Checkbox("box", &cfg.box);
                 ImGui::Checkbox("dot", &cfg.dot);
+                ImGui::Checkbox("anti-bot", &cfg.antiBot);
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("DEBUG")) {
