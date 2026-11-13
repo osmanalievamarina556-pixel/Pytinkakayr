@@ -1,4 +1,4 @@
-// crez_esp.cpp: ImGui ESP поверх eglSwapBuffers, Android arm64, Dobby
+// crez_esp.cpp: ImGui ESP поверх eglSwapBuffers, Android arm64, inline hook
 // НЕ ПРОВЕРЕНО НА УСТРОЙСТВЕ. Оффсеты ниже — стандартные UE4 значения-кандидаты,
 // для этой сборки не подтверждены. Включи DEBUG и сверь значения до включения ESP.
 #include <EGL/egl.h>
@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
-#include "dobby.h"
+#include "inline_hook.h"
 
 #define TAG "crez"
 #define LOG(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -22,7 +22,7 @@
 #define OFF_LEVEL_ACTORS  0x98        // ULevel::Actors (TArray<AActor*>)
 #define OFF_ROOTCOMP      0x188       // AActor::RootComponent
 #define OFF_RELLOC        0x11C       // USceneComponent::RelativeLocation (FVector)
-#define OFF_VIEWMATRIX    0x0         // FILL: матрица камеры (см. README в комментарии ниже)
+#define OFF_VIEWMATRIX    0x0         // FILL: матрица камеры
 
 struct Cfg {
     bool esp = true, box = true, dot = true, debug = true;
@@ -159,6 +159,6 @@ __attribute__((constructor))
 static void init() {
     void* egl = dlopen("libEGL.so", RTLD_NOW);
     void* sw = dlsym(egl, "eglSwapBuffers");
-    DobbyHook(sw, (void*)hkSwap, (void**)&oSwap);
+    inline_hook(sw, (void*)hkSwap, (void**)&oSwap);
     LOG("hooked eglSwapBuffers");
 }
