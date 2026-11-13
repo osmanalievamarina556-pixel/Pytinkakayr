@@ -18,6 +18,22 @@ jobs:
           git clone --depth 1 https://github.com/ocornut/imgui third_party/imgui
           git clone --depth 1 https://github.com/jmpews/Dobby third_party/dobby
 
+      - name: Patch Dobby RuntimeModule
+        run: |
+          # Добавляем поле load_address в struct RuntimeModule, если его нет.
+          # Ищем определение структуры в любом заголовке Dobby.
+          FILES=$(grep -rl "struct RuntimeModule" third_party/dobby --include=*.h --include=*.hpp || true)
+          if [ -z "$FILES" ]; then
+            echo "struct RuntimeModule не найден"; exit 1
+          fi
+          for f in $FILES; do
+            if ! grep -q "load_address" "$f"; then
+              perl -0pi -e 's/(struct\s+RuntimeModule\s*\{)/$1\n    void *load_address;/' "$f"
+              echo "patched $f"
+            fi
+          done
+          grep -rn "load_address" third_party/dobby --include=*.h --include=*.hpp | head -5
+
       - name: Setup NDK
         uses: nttld/setup-ndk@v1
         with:
