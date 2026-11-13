@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
+#include <cstdlib>
+#include <cstdint>
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include "inline_hook.h"
